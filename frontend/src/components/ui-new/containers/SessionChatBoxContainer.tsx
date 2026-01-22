@@ -416,6 +416,11 @@ export function SessionChatBoxContainer(props: SessionChatBoxContainerProps) {
     cancelDebouncedSave();
     await saveToScratch(localMessage, selectedVariant);
     await queueMessage(combinedMessage, selectedVariant);
+
+    // Clear local state after queueing (same as handleSend)
+    setLocalMessage('');
+    clearUploadedImages();
+    reviewContext?.clearComments();
   }, [
     localMessage,
     reviewMarkdown,
@@ -423,6 +428,9 @@ export function SessionChatBoxContainer(props: SessionChatBoxContainerProps) {
     queueMessage,
     cancelDebouncedSave,
     saveToScratch,
+    setLocalMessage,
+    clearUploadedImages,
+    reviewContext,
   ]);
 
   // Editor change handler
@@ -465,6 +473,14 @@ export function SessionChatBoxContainer(props: SessionChatBoxContainerProps) {
   const handleCancelFeedback = useCallback(() => {
     feedbackContext?.exitFeedbackMode();
   }, [feedbackContext]);
+
+  // Handle cancel queue - restore message to editor
+  const handleCancelQueue = useCallback(async () => {
+    if (queuedMessage) {
+      setLocalMessage(queuedMessage);
+    }
+    await cancelQueue();
+  }, [queuedMessage, setLocalMessage, cancelQueue]);
 
   // Message edit retry mutation
   const editRetryMutation = useMessageEditRetry(sessionId ?? '', () => {
@@ -658,7 +674,7 @@ export function SessionChatBoxContainer(props: SessionChatBoxContainerProps) {
       actions={{
         onSend: handleSend,
         onQueue: handleQueueMessage,
-        onCancelQueue: cancelQueue,
+        onCancelQueue: handleCancelQueue,
         onStop: stopExecution,
         onPasteFiles: uploadFiles,
       }}
