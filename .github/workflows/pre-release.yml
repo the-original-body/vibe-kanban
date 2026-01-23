@@ -31,7 +31,7 @@ env:
 
 jobs:
   bump-version:
-    runs-on: ubuntu-latest-m
+    runs-on: ubuntu-latest
     outputs:
       new_tag: ${{ steps.version.outputs.new_tag }}
       new_version: ${{ steps.version.outputs.new_version }}
@@ -120,7 +120,7 @@ jobs:
 
   build-frontend:
     needs: bump-version
-    runs-on: ubuntu-latest-x64-l
+    runs-on: ubuntu-latest
     env:
       VITE_PUBLIC_REACT_VIRTUOSO_LICENSE_KEY: ${{ secrets.PUBLIC_REACT_VIRTUOSO_LICENSE_KEY }}
       VITE_VK_SHARED_API_BASE: ${{ secrets.VK_SHARED_API_BASE }}
@@ -172,25 +172,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       # Platform matrix - keep target/name in sync with package-npx-cli job
+      # Note: linux-arm64 removed (no free GitHub runner available)
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest-x64-l
+            os: ubuntu-latest
             name: linux-x64
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest-arm64-l
-            name: linux-arm64
           - target: x86_64-pc-windows-msvc
-            os: ubuntu-latest-x64-l
+            os: ubuntu-latest
             name: windows-x64
           - target: x86_64-apple-darwin
-            os: macos-15-xlarge
+            os: macos-14
             name: macos-x64
           - target: aarch64-apple-darwin
-            os: macos-15-xlarge
+            os: macos-14
             name: macos-arm64
           - target: aarch64-pc-windows-msvc
-            os: ubuntu-latest-x64-l
+            os: ubuntu-latest
             name: windows-arm64
     env:
       CARGO_INCREMENTAL: "0"
@@ -448,10 +446,10 @@ jobs:
 
   package-npx-cli:
     needs: [bump-version, build-frontend, build-backend]
-    runs-on: ubuntu-latest-m
+    runs-on: ubuntu-latest
     strategy:
       # NOTE: This matrix must be kept in sync with build-backend job above
-      # GitHub Actions doesn't support YAML anchors, so duplication is unavoidable
+      # Note: linux-arm64 removed (no free GitHub runner available)
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
@@ -479,11 +477,6 @@ jobs:
             binary: tob-vibe-kanban.exe
             mcp_binary: tob-vibe-kanban-mcp.exe
             review_binary: tob-vibe-kanban-review.exe
-          - target: aarch64-unknown-linux-musl
-            name: linux-arm64
-            binary: tob-vibe-kanban
-            mcp_binary: tob-vibe-kanban-mcp
-            review_binary: tob-vibe-kanban-review
     steps:
       - uses: actions/checkout@v4
         with:
@@ -540,7 +533,7 @@ jobs:
 
   upload-to-r2:
     needs: [bump-version, package-npx-cli]
-    runs-on: ubuntu-latest-m
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -575,7 +568,7 @@ jobs:
             const fs = require('fs');
             const crypto = require('crypto');
             const manifest = { version: '$TAG', platforms: {} };
-            const platforms = ['linux-x64', 'linux-arm64', 'windows-x64', 'windows-arm64', 'macos-x64', 'macos-arm64'];
+            const platforms = ['linux-x64', 'windows-x64', 'windows-arm64', 'macos-x64', 'macos-arm64'];
             const binaries = ['tob-vibe-kanban', 'tob-vibe-kanban-mcp', 'tob-vibe-kanban-review'];
 
             for (const platform of platforms) {
@@ -597,7 +590,7 @@ jobs:
           "
 
           # Upload binaries (use full tag for path, allows multiple pre-releases to coexist)
-          for platform in linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
+          for platform in linux-x64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
             for binary in tob-vibe-kanban tob-vibe-kanban-mcp tob-vibe-kanban-review; do
               if [ -f "binaries/$platform/$binary.zip" ]; then
                 echo "Uploading binaries/$platform/$binary.zip..."
@@ -634,7 +627,7 @@ jobs:
 
   create-prerelease:
     needs: [bump-version, build-frontend, upload-to-r2]
-    runs-on: ubuntu-latest-m
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
