@@ -1,6 +1,6 @@
 {
   "name": "tob-vibe-kanban",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": false,
   "bin": {
     "tob-vibe-kanban": "npx-cli/bin/cli.js"
