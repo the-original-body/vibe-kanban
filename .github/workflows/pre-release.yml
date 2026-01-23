@@ -655,10 +655,19 @@ jobs:
           ENDPOINT="${{ secrets.R2_BINARIES_ENDPOINT }}"
           BUCKET="${{ secrets.R2_BINARIES_BUCKET }}"
 
-          echo "Listing uploaded files..."
-          aws s3 ls "s3://$BUCKET/binaries/$TAG/" \
-            --endpoint-url "$ENDPOINT" \
-            --recursive
+          echo "Verifying manifest upload..."
+          aws s3api head-object \
+            --bucket "$BUCKET" \
+            --key "binaries/$TAG/manifest.json" \
+            --endpoint-url "$ENDPOINT"
+          echo "✓ Manifest verified"
+
+          echo "Verifying linux-x64 binary..."
+          aws s3api head-object \
+            --bucket "$BUCKET" \
+            --key "binaries/$TAG/linux-x64/tob-vibe-kanban.zip" \
+            --endpoint-url "$ENDPOINT"
+          echo "✓ Linux binary verified"
 
   create-prerelease:
     needs: [bump-version, build-frontend, upload-to-r2]
