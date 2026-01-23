@@ -9,13 +9,14 @@ use super::get_txid;
 use crate::mutation_types::{DeleteResponse, MutationResponse};
 
 /// Default statuses that are created for each new project (name, color, sort_order)
+/// Colors are in HSL format: "H S% L%"
 pub const DEFAULT_STATUSES: &[(&str, &str, i32)] = &[
-    ("Backlog", "#6b7280", 0),
-    ("To do", "#3b82f6", 1),
-    ("In progress", "#f59e0b", 2),
-    ("In review", "#8b5cf6", 3),
-    ("Done", "#22c55e", 4),
-    ("Cancelled", "#ef4444", 5),
+    ("Backlog", "220 9% 46%", 0),
+    ("To do", "217 91% 60%", 1),
+    ("In progress", "38 92% 50%", 2),
+    ("In review", "258 90% 66%", 3),
+    ("Done", "142 71% 45%", 4),
+    ("Cancelled", "0 84% 60%", 5),
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -59,6 +60,36 @@ impl ProjectStatusRepository {
             WHERE id = $1
             "#,
             id
+        )
+        .fetch_optional(executor)
+        .await?;
+
+        Ok(record)
+    }
+
+    pub async fn find_by_name<'e, E>(
+        executor: E,
+        project_id: Uuid,
+        name: &str,
+    ) -> Result<Option<ProjectStatus>, ProjectStatusError>
+    where
+        E: Executor<'e, Database = Postgres>,
+    {
+        let record = sqlx::query_as!(
+            ProjectStatus,
+            r#"
+            SELECT
+                id              AS "id!: Uuid",
+                project_id      AS "project_id!: Uuid",
+                name            AS "name!",
+                color           AS "color!",
+                sort_order      AS "sort_order!",
+                created_at      AS "created_at!: DateTime<Utc>"
+            FROM project_statuses
+            WHERE project_id = $1 AND LOWER(name) = LOWER($2)
+            "#,
+            project_id,
+            name
         )
         .fetch_optional(executor)
         .await?;
