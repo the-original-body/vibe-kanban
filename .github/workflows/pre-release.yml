@@ -434,9 +434,12 @@ jobs:
       - name: Package unsigned binaries (macOS)
         if: runner.os == 'macOS' && steps.check_signing.outputs.available != 'true'
         run: |
-          zip -j tob-vibe-kanban.zip target/${{ matrix.target }}/release/server
-          zip -j tob-vibe-kanban-mcp.zip target/${{ matrix.target }}/release/mcp_task_server
-          zip -j tob-vibe-kanban-review.zip target/${{ matrix.target }}/release/review
+          cp target/${{ matrix.target }}/release/server tob-vibe-kanban
+          cp target/${{ matrix.target }}/release/mcp_task_server tob-vibe-kanban-mcp
+          cp target/${{ matrix.target }}/release/review tob-vibe-kanban-review
+          zip tob-vibe-kanban.zip tob-vibe-kanban
+          zip tob-vibe-kanban-mcp.zip tob-vibe-kanban-mcp
+          zip tob-vibe-kanban-review.zip tob-vibe-kanban-review
 
       - name: Notarize signed binaries (macOS)
         if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
