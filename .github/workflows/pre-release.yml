@@ -31,14 +31,14 @@ env:
 
 jobs:
   bump-version:
-    runs-on: ubuntu-latest-m
+    runs-on: ubuntu-latest
     outputs:
       new_tag: ${{ steps.version.outputs.new_tag }}
       new_version: ${{ steps.version.outputs.new_version }}
       branch_suffix: ${{ steps.branch.outputs.suffix }}
     steps:
       - name: Cache cargo-edit
-        uses: actions/cache@v5
+        uses: actions/cache@v3
         id: cache-cargo-edit
         with:
           path: ~/.cargo/bin/cargo-set-version
@@ -48,7 +48,7 @@ jobs:
         if: steps.cache-cargo-edit.outputs.cache-hit != 'true'
         run: cargo install cargo-edit
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ssh-key: ${{ secrets.DEPLOY_KEY }}
@@ -70,12 +70,25 @@ jobs:
         id: version
         run: |
           # Get the latest version from npm registry
-          latest_npm_version=$(npm view vibe-kanban version 2>/dev/null || echo "0.0.0")
+          latest_npm_version=$(npm view tob-vibe-kanban version 2>/dev/null || echo "0.0.0")
           echo "Latest npm version: $latest_npm_version"
+
+          # Get current local version
+          local_version=$(node -p "require('./package.json').version")
+          echo "Local package.json version: $local_version"
+
+          # Use the higher of npm or local version (handles case when npm not published yet)
+          base_version=$(node -e "
+            const a = '$local_version'.split('.').map(Number);
+            const b = '$latest_npm_version'.split('.').map(Number);
+            const gt = a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]) || (a[0] === b[0] && a[1] === b[1] && a[2] > b[2]);
+            console.log(gt ? '$local_version' : '$latest_npm_version');
+          ")
+          echo "Base version for bump: $base_version"
 
           timestamp=$(date +%Y%m%d%H%M%S)
 
-          # Update root package.json based on npm version, not current package.json
+          # Update root package.json based on determined base version
           if [[ "${{ github.event.inputs.version_type }}" == "prerelease" ]]; then
             # For prerelease, use current package.json version and add branch suffix
             npm version prerelease --preid="${{ steps.branch.outputs.suffix }}" --no-git-tag-version
@@ -83,8 +96,8 @@ jobs:
             new_version=$(node -p "require('./package.json').version")
             new_tag="v${new_version}.${timestamp}"
           else
-            # For regular releases, use npm version and bump it
-            npm version $latest_npm_version --no-git-tag-version --allow-same-version
+            # For regular releases, use base version and bump it
+            npm version $base_version --no-git-tag-version --allow-same-version
             npm version ${{ github.event.inputs.version_type }} --no-git-tag-version
 
             new_version=$(node -p "require('./package.json').version")
@@ -120,12 +133,12 @@ jobs:
 
   build-frontend:
     needs: bump-version
-    runs-on: ubuntu-latest-x64-l
+    runs-on: ubuntu-latest
     env:
       VITE_PUBLIC_REACT_VIRTUOSO_LICENSE_KEY: ${{ secrets.PUBLIC_REACT_VIRTUOSO_LICENSE_KEY }}
       VITE_VK_SHARED_API_BASE: ${{ secrets.VK_SHARED_API_BASE }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           ref: ${{ needs.bump-version.outputs.new_tag }}
 
@@ -149,6 +162,7 @@ jobs:
           VITE_POSTHOG_API_ENDPOINT: ${{ secrets.POSTHOG_API_ENDPOINT }}
 
       - name: Create Sentry release
+        continue-on-error: true
         uses: getsentry/action-release@v3
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -161,7 +175,7 @@ jobs:
           ignore_missing: true
 
       - name: Upload frontend artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
           path: frontend/dist/
@@ -172,25 +186,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       # Platform matrix - keep target/name in sync with package-npx-cli job
+      # Note: linux-arm64 removed (no free GitHub runner available)
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest-x64-l
+            os: ubuntu-latest
             name: linux-x64
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest-arm64-l
-            name: linux-arm64
           - target: x86_64-pc-windows-msvc
-            os: ubuntu-latest-x64-l
+            os: ubuntu-latest
             name: windows-x64
           - target: x86_64-apple-darwin
-            os: macos-15-xlarge
+            os: macos-14
             name: macos-x64
           - target: aarch64-apple-darwin
-            os: macos-15-xlarge
+            os: macos-14
             name: macos-arm64
           - target: aarch64-pc-windows-msvc
-            os: ubuntu-latest-x64-l
+            os: ubuntu-latest
             name: windows-arm64
     env:
       CARGO_INCREMENTAL: "0"
@@ -201,7 +213,7 @@ jobs:
       RUSTUP_HOME: ${{ github.workspace }}/.rustup
       XWIN_CACHE_DIR: ${{ github.workspace }}/.xwin-cache
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           ref: ${{ needs.bump-version.outputs.new_tag }}
 
@@ -209,7 +221,7 @@ jobs:
         uses: BloopAI/sccache-action@main
 
       - name: Cache Rust toolchain
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: .rustup/toolchains
           key: rust-toolchain-${{ runner.os }}-${{ matrix.target }}-${{ env.RUST_TOOLCHAIN }}
@@ -282,7 +294,7 @@ jobs:
           cargo install --locked cargo-sweep --version 0.8.0
 
       - name: Download frontend artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: frontend/dist/
@@ -331,6 +343,7 @@ jobs:
           CARGO_PROFILE_RELEASE_DEBUG: 0
 
       - name: Setup Sentry CLI
+        continue-on-error: true
         uses: matbour/setup-sentry-cli@v2
         with:
           token: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -339,6 +352,7 @@ jobs:
           version: 2.21.2
 
       - name: Upload source maps to Sentry
+        continue-on-error: true
         run: sentry-cli debug-files upload --include-sources target/${{ matrix.target }}/release
 
       - name: Prepare binaries (non-macOS)
@@ -347,81 +361,103 @@ jobs:
         run: |
           mkdir -p dist
           if [[ "${{ matrix.name }}" == *"windows"* ]]; then
-            cp target/${{ matrix.target }}/release/server.exe dist/vibe-kanban-${{ matrix.name }}.exe
-            cp target/${{ matrix.target }}/release/mcp_task_server.exe dist/vibe-kanban-mcp-${{ matrix.name }}.exe
-            cp target/${{ matrix.target }}/release/review.exe dist/vibe-kanban-review-${{ matrix.name }}.exe
+            cp target/${{ matrix.target }}/release/server.exe dist/tob-vibe-kanban-${{ matrix.name }}.exe
+            cp target/${{ matrix.target }}/release/mcp_task_server.exe dist/tob-vibe-kanban-mcp-${{ matrix.name }}.exe
+            cp target/${{ matrix.target }}/release/review.exe dist/tob-vibe-kanban-review-${{ matrix.name }}.exe
           else
-            cp target/${{ matrix.target }}/release/server dist/vibe-kanban-${{ matrix.name }}
-            cp target/${{ matrix.target }}/release/mcp_task_server dist/vibe-kanban-mcp-${{ matrix.name }}
-            cp target/${{ matrix.target }}/release/review dist/vibe-kanban-review-${{ matrix.name }}
+            cp target/${{ matrix.target }}/release/server dist/tob-vibe-kanban-${{ matrix.name }}
+            cp target/${{ matrix.target }}/release/mcp_task_server dist/tob-vibe-kanban-mcp-${{ matrix.name }}
+            cp target/${{ matrix.target }}/release/review dist/tob-vibe-kanban-review-${{ matrix.name }}
           fi
 
-      # Code signing for macOS only
-      - name: Prepare Apple certificate (macOS)
+      # Code signing for macOS only (requires APPLE_CERTIFICATE_P12_BASE64 secret)
+      - name: Check if code signing is available
         if: runner.os == 'macOS'
+        id: check_signing
+        run: |
+          if [ -n "${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "::warning::Apple certificate not configured - macOS binaries will not be signed"
+          fi
+
+      - name: Prepare Apple certificate (macOS)
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         run: |
           echo "${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}" | base64 --decode > certificate.p12
 
       - name: Write API Key to file
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         env:
           API_KEY: ${{ secrets.APP_STORE_API_KEY }}
         run: echo $API_KEY > app_store_key.json
 
       - name: Sign main binary (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         uses: BloopAI/apple-code-sign-action@v1
         with:
           input_path: target/${{ matrix.target }}/release/server
-          output_path: vibe-kanban
+          output_path: tob-vibe-kanban
           p12_file: certificate.p12
           p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           sign: true
           sign_args: "--code-signature-flags=runtime"
 
-      - name: Package main binary (macOS)
-        if: runner.os == 'macOS'
-        run: zip vibe-kanban.zip vibe-kanban
+      - name: Package signed main binary (macOS)
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
+        run: zip tob-vibe-kanban.zip tob-vibe-kanban
 
       - name: Sign MCP binary (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         uses: BloopAI/apple-code-sign-action@v1
         with:
           input_path: target/${{ matrix.target }}/release/mcp_task_server
-          output_path: vibe-kanban-mcp
+          output_path: tob-vibe-kanban-mcp
           p12_file: certificate.p12
           p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           sign: true
           sign_args: "--code-signature-flags=runtime"
 
-      - name: Package MCP binary (macOS)
-        if: runner.os == 'macOS'
-        run: zip vibe-kanban-mcp.zip vibe-kanban-mcp
+      - name: Package signed MCP binary (macOS)
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
+        run: zip tob-vibe-kanban-mcp.zip tob-vibe-kanban-mcp
 
       - name: Sign Review binary (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         uses: BloopAI/apple-code-sign-action@v1
         with:
           input_path: target/${{ matrix.target }}/release/review
-          output_path: vibe-kanban-review
+          output_path: tob-vibe-kanban-review
           p12_file: certificate.p12
           p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           sign: true
           sign_args: "--code-signature-flags=runtime"
 
-      - name: Package Review binary (macOS)
-        if: runner.os == 'macOS'
-        run: zip vibe-kanban-review.zip vibe-kanban-review
+      - name: Package signed Review binary (macOS)
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
+        run: zip tob-vibe-kanban-review.zip tob-vibe-kanban-review
+
+      # Package unsigned binaries for macOS when signing is not available
+      - name: Package unsigned binaries (macOS)
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available != 'true'
+        run: |
+          cp target/${{ matrix.target }}/release/server tob-vibe-kanban
+          cp target/${{ matrix.target }}/release/mcp_task_server tob-vibe-kanban-mcp
+          cp target/${{ matrix.target }}/release/review tob-vibe-kanban-review
+          zip tob-vibe-kanban.zip tob-vibe-kanban
+          zip tob-vibe-kanban-mcp.zip tob-vibe-kanban-mcp
+          zip tob-vibe-kanban-review.zip tob-vibe-kanban-review
 
       - name: Notarize signed binaries (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         uses: BloopAI/apple-code-sign-action@main
         continue-on-error: true
         with:
           input_path: |
-            vibe-kanban.zip
-            vibe-kanban-mcp.zip
-            vibe-kanban-review.zip
+            tob-vibe-kanban.zip
+            tob-vibe-kanban-mcp.zip
+            tob-vibe-kanban-review.zip
           sign: false
           notarize: true
           app_store_connect_api_key_json_file: app_store_key.json
@@ -430,9 +466,9 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           mkdir -p dist
-          cp vibe-kanban.zip dist/vibe-kanban-${{ matrix.name }}.zip
-          cp vibe-kanban-mcp.zip dist/vibe-kanban-mcp-${{ matrix.name }}.zip
-          cp vibe-kanban-review.zip dist/vibe-kanban-review-${{ matrix.name }}.zip
+          cp tob-vibe-kanban.zip dist/tob-vibe-kanban-${{ matrix.name }}.zip
+          cp tob-vibe-kanban-mcp.zip dist/tob-vibe-kanban-mcp-${{ matrix.name }}.zip
+          cp tob-vibe-kanban-review.zip dist/tob-vibe-kanban-review-${{ matrix.name }}.zip
 
       - name: Clean up certificates (macOS)
         if: runner.os == 'macOS'
@@ -441,7 +477,7 @@ jobs:
           rm -rf private_keys/
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: backend-binary-${{ matrix.name }}
           path: dist/
@@ -456,55 +492,50 @@ jobs:
 
   package-npx-cli:
     needs: [bump-version, build-frontend, build-backend]
-    runs-on: ubuntu-latest-m
+    runs-on: ubuntu-latest
     strategy:
       # NOTE: This matrix must be kept in sync with build-backend job above
-      # GitHub Actions doesn't support YAML anchors, so duplication is unavoidable
+      # Note: linux-arm64 removed (no free GitHub runner available)
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
             name: linux-x64
-            binary: vibe-kanban
-            mcp_binary: vibe-kanban-mcp
-            review_binary: vibe-kanban-review
+            binary: tob-vibe-kanban
+            mcp_binary: tob-vibe-kanban-mcp
+            review_binary: tob-vibe-kanban-review
           - target: x86_64-pc-windows-msvc
             name: windows-x64
-            binary: vibe-kanban.exe
-            mcp_binary: vibe-kanban-mcp.exe
-            review_binary: vibe-kanban-review.exe
+            binary: tob-vibe-kanban.exe
+            mcp_binary: tob-vibe-kanban-mcp.exe
+            review_binary: tob-vibe-kanban-review.exe
           - target: x86_64-apple-darwin
             name: macos-x64
-            binary: vibe-kanban
-            mcp_binary: vibe-kanban-mcp
-            review_binary: vibe-kanban-review
+            binary: tob-vibe-kanban
+            mcp_binary: tob-vibe-kanban-mcp
+            review_binary: tob-vibe-kanban-review
           - target: aarch64-apple-darwin
             name: macos-arm64
-            binary: vibe-kanban
-            mcp_binary: vibe-kanban-mcp
-            review_binary: vibe-kanban-review
+            binary: tob-vibe-kanban
+            mcp_binary: tob-vibe-kanban-mcp
+            review_binary: tob-vibe-kanban-review
           - target: aarch64-pc-windows-msvc
             name: windows-arm64
-            binary: vibe-kanban.exe
-            mcp_binary: vibe-kanban-mcp.exe
-            review_binary: vibe-kanban-review.exe
-          - target: aarch64-unknown-linux-musl
-            name: linux-arm64
-            binary: vibe-kanban
-            mcp_binary: vibe-kanban-mcp
-            review_binary: vibe-kanban-review
+            binary: tob-vibe-kanban.exe
+            mcp_binary: tob-vibe-kanban-mcp.exe
+            review_binary: tob-vibe-kanban-review.exe
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           ref: ${{ needs.bump-version.outputs.new_tag }}
 
       - name: Download frontend artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: frontend/dist/
 
       - name: Download backend binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           name: backend-binary-${{ matrix.name }}
           path: dist/
@@ -518,29 +549,29 @@ jobs:
         if: matrix.name != 'macos-arm64' && matrix.name != 'macos-x64'
         run: |
           mkdir -p npx-cli/dist/${{ matrix.name }}
-          mkdir vibe-kanban-${{ matrix.name }}
-          mkdir vibe-kanban-mcp-${{ matrix.name }}
-          mkdir vibe-kanban-review-${{ matrix.name }}
+          mkdir tob-vibe-kanban-${{ matrix.name }}
+          mkdir tob-vibe-kanban-mcp-${{ matrix.name }}
+          mkdir tob-vibe-kanban-review-${{ matrix.name }}
 
-          cp dist/vibe-kanban-${{ matrix.name }}* vibe-kanban-${{ matrix.name }}/${{ matrix.binary }}
-          cp dist/vibe-kanban-mcp-${{ matrix.name }}* vibe-kanban-mcp-${{ matrix.name }}/${{ matrix.mcp_binary }}
-          cp dist/vibe-kanban-review-${{ matrix.name }}* vibe-kanban-review-${{ matrix.name }}/${{ matrix.review_binary }}
+          cp dist/tob-vibe-kanban-${{ matrix.name }}* tob-vibe-kanban-${{ matrix.name }}/${{ matrix.binary }}
+          cp dist/tob-vibe-kanban-mcp-${{ matrix.name }}* tob-vibe-kanban-mcp-${{ matrix.name }}/${{ matrix.mcp_binary }}
+          cp dist/tob-vibe-kanban-review-${{ matrix.name }}* tob-vibe-kanban-review-${{ matrix.name }}/${{ matrix.review_binary }}
 
-          zip -j npx-cli/dist/${{ matrix.name }}/vibe-kanban.zip vibe-kanban-${{ matrix.name }}/${{ matrix.binary }}
-          zip -j npx-cli/dist/${{ matrix.name }}/vibe-kanban-mcp.zip vibe-kanban-mcp-${{ matrix.name }}/${{ matrix.mcp_binary }}
-          zip -j npx-cli/dist/${{ matrix.name }}/vibe-kanban-review.zip vibe-kanban-review-${{ matrix.name }}/${{ matrix.review_binary }}
+          zip -j npx-cli/dist/${{ matrix.name }}/tob-vibe-kanban.zip tob-vibe-kanban-${{ matrix.name }}/${{ matrix.binary }}
+          zip -j npx-cli/dist/${{ matrix.name }}/tob-vibe-kanban-mcp.zip tob-vibe-kanban-mcp-${{ matrix.name }}/${{ matrix.mcp_binary }}
+          zip -j npx-cli/dist/${{ matrix.name }}/tob-vibe-kanban-review.zip tob-vibe-kanban-review-${{ matrix.name }}/${{ matrix.review_binary }}
 
       - name: Create platform package (macOS)
         if: matrix.name == 'macos-arm64' || matrix.name == 'macos-x64'
         run: |
           mkdir -p npx-cli/dist/${{ matrix.name }}
-          mkdir vibe-kanban-${{ matrix.name }}
-          cp dist/vibe-kanban-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-kanban.zip
-          cp dist/vibe-kanban-mcp-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-kanban-mcp.zip
-          cp dist/vibe-kanban-review-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-kanban-review.zip
+          mkdir tob-vibe-kanban-${{ matrix.name }}
+          cp dist/tob-vibe-kanban-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/tob-vibe-kanban.zip
+          cp dist/tob-vibe-kanban-mcp-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/tob-vibe-kanban-mcp.zip
+          cp dist/tob-vibe-kanban-review-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/tob-vibe-kanban-review.zip
 
       - name: Upload platform package artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: npx-platform-${{ matrix.name }}
           path: npx-cli/dist/
@@ -548,14 +579,14 @@ jobs:
 
   upload-to-r2:
     needs: [bump-version, package-npx-cli]
-    runs-on: ubuntu-latest-m
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           ref: ${{ needs.bump-version.outputs.new_tag }}
 
       - name: Download all platform packages
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           pattern: npx-platform-*
           path: binaries/
@@ -583,8 +614,8 @@ jobs:
             const fs = require('fs');
             const crypto = require('crypto');
             const manifest = { version: '$TAG', platforms: {} };
-            const platforms = ['linux-x64', 'linux-arm64', 'windows-x64', 'windows-arm64', 'macos-x64', 'macos-arm64'];
-            const binaries = ['vibe-kanban', 'vibe-kanban-mcp', 'vibe-kanban-review'];
+            const platforms = ['linux-x64', 'windows-x64', 'windows-arm64', 'macos-x64', 'macos-arm64'];
+            const binaries = ['tob-vibe-kanban', 'tob-vibe-kanban-mcp', 'tob-vibe-kanban-review'];
 
             for (const platform of platforms) {
               manifest.platforms[platform] = {};
@@ -605,8 +636,8 @@ jobs:
           "
 
           # Upload binaries (use full tag for path, allows multiple pre-releases to coexist)
-          for platform in linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
-            for binary in vibe-kanban vibe-kanban-mcp vibe-kanban-review; do
+          for platform in linux-x64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
+            for binary in tob-vibe-kanban tob-vibe-kanban-mcp tob-vibe-kanban-review; do
               if [ -f "binaries/$platform/$binary.zip" ]; then
                 echo "Uploading binaries/$platform/$binary.zip..."
                 aws s3 cp "binaries/$platform/$binary.zip" \
@@ -635,21 +666,30 @@ jobs:
           ENDPOINT="${{ secrets.R2_BINARIES_ENDPOINT }}"
           BUCKET="${{ secrets.R2_BINARIES_BUCKET }}"
 
-          echo "Listing uploaded files..."
-          aws s3 ls "s3://$BUCKET/binaries/$TAG/" \
-            --endpoint-url "$ENDPOINT" \
-            --recursive
+          echo "Verifying manifest upload..."
+          aws s3api head-object \
+            --bucket "$BUCKET" \
+            --key "binaries/$TAG/manifest.json" \
+            --endpoint-url "$ENDPOINT"
+          echo "✓ Manifest verified"
+
+          echo "Verifying linux-x64 binary..."
+          aws s3api head-object \
+            --bucket "$BUCKET" \
+            --key "binaries/$TAG/linux-x64/tob-vibe-kanban.zip" \
+            --endpoint-url "$ENDPOINT"
+          echo "✓ Linux binary verified"
 
   create-prerelease:
     needs: [bump-version, build-frontend, upload-to-r2]
-    runs-on: ubuntu-latest-m
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           ref: ${{ needs.bump-version.outputs.new_tag }}
 
       - name: Download frontend artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: frontend/dist/
@@ -661,9 +701,9 @@ jobs:
 
       - name: Zip frontend
         run: |
-          mkdir vibe-kanban-${{ needs.bump-version.outputs.new_tag }}
-          mv frontend/dist vibe-kanban-${{ needs.bump-version.outputs.new_tag }}
-          zip -r vibe-kanban-${{ needs.bump-version.outputs.new_tag }}.zip vibe-kanban-${{ needs.bump-version.outputs.new_tag }}
+          mkdir tob-vibe-kanban-${{ needs.bump-version.outputs.new_tag }}
+          mv frontend/dist tob-vibe-kanban-${{ needs.bump-version.outputs.new_tag }}
+          zip -r tob-vibe-kanban-${{ needs.bump-version.outputs.new_tag }}.zip tob-vibe-kanban-${{ needs.bump-version.outputs.new_tag }}
 
       - name: Setup Node for npm pack
         uses: ./.github/actions/setup-node
@@ -684,5 +724,12 @@ jobs:
           prerelease: true
           generate_release_notes: true
           files: |
-            vibe-kanban-${{ needs.bump-version.outputs.new_tag }}.zip
-            npx-cli/vibe-kanban-*.tgz
+            tob-vibe-kanban-${{ needs.bump-version.outputs.new_tag }}.zip
+            npx-cli/tob-vibe-kanban-*.tgz
+
+      - name: Publish to npm
+        run: |
+          cd npx-cli
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
