@@ -717,3 +717,10 @@ jobs:
           files: |
             tob-vibe-kanban-${{ needs.bump-version.outputs.new_tag }}.zip
             npx-cli/tob-vibe-kanban-*.tgz
+
+      - name: Publish to npm
+        run: |
+          cd npx-cli
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
