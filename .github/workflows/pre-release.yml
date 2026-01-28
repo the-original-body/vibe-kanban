@@ -370,20 +370,31 @@ jobs:
             cp target/${{ matrix.target }}/release/review dist/tob-vibe-kanban-review-${{ matrix.name }}
           fi
 
-      # Code signing for macOS only
-      - name: Prepare Apple certificate (macOS)
+      # Code signing for macOS only (requires APPLE_CERTIFICATE_P12_BASE64 secret)
+      - name: Check if code signing is available
         if: runner.os == 'macOS'
+        id: check_signing
+        run: |
+          if [ -n "${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "::warning::Apple certificate not configured - macOS binaries will not be signed"
+          fi
+
+      - name: Prepare Apple certificate (macOS)
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         run: |
           echo "${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}" | base64 --decode > certificate.p12
 
       - name: Write API Key to file
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         env:
           API_KEY: ${{ secrets.APP_STORE_API_KEY }}
         run: echo $API_KEY > app_store_key.json
 
       - name: Sign main binary (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         uses: BloopAI/apple-code-sign-action@v1
         with:
           input_path: target/${{ matrix.target }}/release/server
@@ -393,12 +404,12 @@ jobs:
           sign: true
           sign_args: "--code-signature-flags=runtime"
 
-      - name: Package main binary (macOS)
-        if: runner.os == 'macOS'
+      - name: Package signed main binary (macOS)
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         run: zip tob-vibe-kanban.zip tob-vibe-kanban
 
       - name: Sign MCP binary (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         uses: BloopAI/apple-code-sign-action@v1
         with:
           input_path: target/${{ matrix.target }}/release/mcp_task_server
@@ -408,12 +419,12 @@ jobs:
           sign: true
           sign_args: "--code-signature-flags=runtime"
 
-      - name: Package MCP binary (macOS)
-        if: runner.os == 'macOS'
+      - name: Package signed MCP binary (macOS)
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         run: zip tob-vibe-kanban-mcp.zip tob-vibe-kanban-mcp
 
       - name: Sign Review binary (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         uses: BloopAI/apple-code-sign-action@v1
         with:
           input_path: target/${{ matrix.target }}/release/review
@@ -423,12 +434,23 @@ jobs:
           sign: true
           sign_args: "--code-signature-flags=runtime"
 
-      - name: Package Review binary (macOS)
-        if: runner.os == 'macOS'
+      - name: Package signed Review binary (macOS)
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         run: zip tob-vibe-kanban-review.zip tob-vibe-kanban-review
 
+      # Package unsigned binaries for macOS when signing is not available
+      - name: Package unsigned binaries (macOS)
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available != 'true'
+        run: |
+          cp target/${{ matrix.target }}/release/server tob-vibe-kanban
+          cp target/${{ matrix.target }}/release/mcp_task_server tob-vibe-kanban-mcp
+          cp target/${{ matrix.target }}/release/review tob-vibe-kanban-review
+          zip tob-vibe-kanban.zip tob-vibe-kanban
+          zip tob-vibe-kanban-mcp.zip tob-vibe-kanban-mcp
+          zip tob-vibe-kanban-review.zip tob-vibe-kanban-review
+
       - name: Notarize signed binaries (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.check_signing.outputs.available == 'true'
         uses: BloopAI/apple-code-sign-action@main
         continue-on-error: true
         with:
