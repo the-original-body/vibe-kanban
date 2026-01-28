@@ -5,7 +5,10 @@ import { isEqual } from 'lodash';
 import { SpinnerIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
 import { useProjects } from '@/hooks/useProjects';
 import { useProjectMutations } from '@/hooks/useProjectMutations';
-import { RepoPickerDialog } from '@/components/dialogs/shared/RepoPickerDialog';
+import {
+  RepoPickerDialog,
+  isRepoResult,
+} from '@/components/dialogs/shared/RepoPickerDialog';
 import { projectsApi } from '@/lib/api';
 import { repoBranchKeys } from '@/hooks/useRepoBranches';
 import type { Project, Repo, UpdateProject } from 'shared/types';
@@ -137,14 +140,15 @@ export function ProjectsSettingsSection() {
   const handleAddRepository = async () => {
     if (!selectedProjectId) return;
 
-    const repo = await RepoPickerDialog.show({
+    const result = await RepoPickerDialog.show({
       title: 'Select Git Repository',
       description: 'Choose a git repository to add to this project',
     });
 
-    if (!repo) return;
+    // Only proceed if a repo was selected (not GitHub clone or cancelled)
+    if (!isRepoResult(result)) return;
 
-    if (repositories.some((r) => r.id === repo.id)) {
+    if (repositories.some((r) => r.id === result.id)) {
       return;
     }
 
@@ -152,8 +156,8 @@ export function ProjectsSettingsSection() {
     setRepoError(null);
     try {
       const newRepo = await projectsApi.addRepository(selectedProjectId, {
-        display_name: repo.display_name,
-        git_repo_path: repo.path,
+        display_name: result.display_name,
+        git_repo_path: result.path,
       });
       setRepositories((prev) => [...prev, newRepo]);
       queryClient.invalidateQueries({

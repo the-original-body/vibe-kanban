@@ -12,7 +12,12 @@ import { CreateProject, Project } from 'shared/types';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { useProjectMutations } from '@/hooks/useProjectMutations';
 import { defineModal } from '@/lib/modals';
-import { RepoPickerDialog } from '@/components/dialogs/shared/RepoPickerDialog';
+import {
+  RepoPickerDialog,
+  RepoPickerResult,
+  isGitHubCloneResult,
+  isRepoResult,
+} from '@/components/dialogs/shared/RepoPickerDialog';
 
 export interface ProjectFormDialogProps {}
 
@@ -35,23 +40,40 @@ const ProjectFormDialogImpl = NiceModal.create<ProjectFormDialogProps>(() => {
   const hasStartedCreateRef = useRef(false);
 
   const handlePickRepo = useCallback(async () => {
-    const repo = await RepoPickerDialog.show({
+    const result: RepoPickerResult = await RepoPickerDialog.show({
       title: 'Create Project',
       description: 'Select or create a repository for your project',
     });
 
-    if (repo) {
-      const projectName = repo.display_name || repo.name;
+    if (!result) {
+      // Dialog was cancelled
+      modal.resolve({ status: 'canceled' } as ProjectFormDialogResult);
+      modal.hide();
+      return;
+    }
+
+    // Check if this is a GitHub clone result (project already created by backend)
+    if (isGitHubCloneResult(result)) {
+      modal.resolve({
+        status: 'saved',
+        project: result.project,
+      } as ProjectFormDialogResult);
+      modal.hide();
+      return;
+    }
+
+    // Regular repo selected - create a new project
+    if (isRepoResult(result)) {
+      const projectName = result.display_name || result.name;
 
       const createData: CreateProject = {
         name: projectName,
-        repositories: [{ display_name: projectName, git_repo_path: repo.path }],
+        repositories: [
+          { display_name: projectName, git_repo_path: result.path },
+        ],
       };
 
       createProjectMutate(createData);
-    } else {
-      modal.resolve({ status: 'canceled' } as ProjectFormDialogResult);
-      modal.hide();
     }
   }, [createProjectMutate, modal]);
 

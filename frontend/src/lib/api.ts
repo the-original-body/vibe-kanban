@@ -1357,3 +1357,52 @@ export const queueApi = {
     return handleApiResponse<QueueStatus>(response);
   },
 };
+
+// GitHub API Types (inline since they may not be in shared/types.ts yet)
+export type GitHubOrgRepo = {
+  name: string;
+  description: string | null;
+  clone_url: string;
+};
+
+export type GitHubOrgReposError =
+  | { type: 'cli_not_installed' }
+  | { type: 'auth_failed'; message: string }
+  | { type: 'command_failed'; message: string };
+
+export type CloneAndCreateProjectRequest = {
+  repo_full_name: string;
+  destination_path: string;
+  project_name?: string;
+};
+
+// GitHub API
+export const githubApi = {
+  /**
+   * List repositories from a GitHub organization
+   */
+  listOrgRepos: async (
+    org: string,
+    search?: string
+  ): Promise<Result<GitHubOrgRepo[], GitHubOrgReposError>> => {
+    const params = new URLSearchParams({ org });
+    if (search) params.set('search', search);
+    const response = await makeRequest(`/api/github/repos?${params.toString()}`);
+    return handleApiResponseAsResult<GitHubOrgRepo[], GitHubOrgReposError>(
+      response
+    );
+  },
+
+  /**
+   * Clone a GitHub repository and create a project
+   */
+  cloneAndCreateProject: async (
+    data: CloneAndCreateProjectRequest
+  ): Promise<Project> => {
+    const response = await makeRequest('/api/github/clone-and-create-project', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<Project>(response);
+  },
+};

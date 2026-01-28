@@ -21,6 +21,25 @@ use crate::services::git_host::types::{
     CreatePrRequest, OpenPrInfo, PrComment, PrCommentAuthor, PrReviewComment, ReviewCommentUser,
 };
 
+/// A repository from a GitHub organization (non-archived).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GitHubOrgRepoInfo {
+    pub name: String,
+    pub description: Option<String>,
+    pub clone_url: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GhRepoListItem {
+    name: String,
+    description: Option<String>,
+    #[allow(dead_code)]
+    url: String,
+    ssh_url: String,
+    is_archived: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct GitHubRepoInfo {
     pub owner: String,
@@ -358,6 +377,26 @@ impl GhCli {
         )?;
         Ok(())
     }
+
+    /// List repositories from a GitHub organization.
+    ///
+    /// Runs `gh repo list {org} --json name,description,url,sshUrl,isArchived --limit 100`
+    /// and filters out archived repositories.
+    pub fn list_org_repos(&self, org: &str) -> Result<Vec<GitHubOrgRepoInfo>, GhCliError> {
+        let raw = self.run(
+            [
+                "repo",
+                "list",
+                org,
+                "--json",
+                "name,description,url,sshUrl,isArchived",
+                "--limit",
+                "100",
+            ],
+            None,
+        )?;
+        Self::parse_org_repos(&raw)
+    }
 }
 
 impl GhCli {
@@ -510,6 +549,24 @@ impl GhCli {
                 side: c.side,
                 diff_hunk: c.diff_hunk,
                 author_association: c.author_association,
+            })
+            .collect())
+    }
+
+    fn parse_org_repos(raw: &str) -> Result<Vec<GitHubOrgRepoInfo>, GhCliError> {
+        let repos: Vec<GhRepoListItem> = serde_json::from_str(raw.trim()).map_err(|err| {
+            GhCliError::UnexpectedOutput(format!(
+                "Failed to parse gh repo list response: {err}; raw: {raw}"
+            ))
+        })?;
+
+        Ok(repos
+            .into_iter()
+            .filter(|r| !r.is_archived)
+            .map(|r| GitHubOrgRepoInfo {
+                name: r.name,
+                description: r.description,
+                clone_url: r.ssh_url,
             })
             .collect())
     }
