@@ -540,7 +540,7 @@ impl WorktreeManager {
         if let Some(override_path) = WORKSPACE_DIR_OVERRIDE.get() {
             // Always use app-owned subdirectory within custom path for safety.
             // This ensures orphan cleanup never touches user's existing folders.
-            return override_path.join(".vibe-kanban-workspaces");
+            return override_path.join(".tob-vibe-kanban-workspaces");
         }
         Self::get_default_worktree_base_dir()
     }
