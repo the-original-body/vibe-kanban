@@ -29,6 +29,7 @@ WORKDIR /app
 COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY frontend/package*.json ./frontend/
 COPY npx-cli/package*.json ./npx-cli/
+COPY patches ./patches
 
 # Install pnpm and dependencies
 RUN npm install -g pnpm && pnpm install
@@ -56,11 +57,21 @@ RUN apk add --no-cache \
     curl \
     bash \
     nodejs \
-    npm
+    npm \
+    github-cli \
+    python3 \
+    py3-pip
 
 # Install Claude Code CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
+
+# Install pipx (needed for claude-mpm)
+RUN pip install --break-system-packages pipx && pipx ensurepath
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Install claude-mpm
+RUN curl -fsSL https://raw.githubusercontent.com/the-original-body/claude-mpm/main/scripts/tob-setup.sh | bash
 
 # Create app user for security
 RUN addgroup -g 1001 -S appgroup && \

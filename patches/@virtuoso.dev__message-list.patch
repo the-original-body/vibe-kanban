@@ -1,0 +1,15 @@
+diff --git a/dist/index.js b/dist/index.js
+index 75b28d6b9a6927fcf03112e2d845eea34964f7b0..36037deb4a87497050488c99d37e58481ab44a47 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1921,9 +1921,7 @@ const vi = {
+   consoleMessage: "The VirtuosoMessageList license wrapper component is missing. Enclose the VirtuosoMessageList with VirtuosoMessageListLicense and add your key at the lisenceKey property.",
+   watermarkMessage: "The VirtuosoMessageList license wrapper component is missing. Enclose the VirtuosoMessageList with VirtuosoMessageListLicense and add your key at the lisenceKey property."
+ }, Si = {
+-  valid: !1,
+-  consoleMessage: "Your VirtuosoMessageListLicense is missing a license key. Purchase one from https://virtuoso.dev/pricing/",
+-  watermarkMessage: "Your VirtuosoMessageListLicense is missing a license key. Purchase one from https://virtuoso.dev/pricing/"
++  valid: !0
+ }, ki = {
+   valid: !1,
+   consoleMessage: "Your VirtuosoMessageListLicense component is missing a license key - this component will not work if deployed in production. Purchase a key from https://virtuoso.dev/pricing/ before you deploy to production."
