@@ -49,7 +49,18 @@ RUN apk add --no-cache \
     ca-certificates \
     tini \
     libgcc \
-    wget
+    libstdc++ \
+    wget \
+    git \
+    openssh-client \
+    curl \
+    bash \
+    nodejs \
+    npm
+
+# Install Claude Code CLI
+RUN curl -fsSL https://claude.ai/install.sh | bash
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Create app user for security
 RUN addgroup -g 1001 -S appgroup && \
@@ -60,7 +71,8 @@ COPY --from=builder /app/target/release/server /usr/local/bin/server
 
 # Create repos directory and set permissions
 RUN mkdir -p /repos && \
-    chown -R appuser:appgroup /repos
+    chown -R appuser:appgroup /repos && \
+    git config --global --add safe.directory '*'
 
 # Switch to non-root user
 USER appuser
