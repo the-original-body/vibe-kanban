@@ -62,18 +62,7 @@ RUN apk add --no-cache \
     python3 \
     py3-pip
 
-# Install Claude Code CLI
-RUN curl -fsSL https://claude.ai/install.sh | bash
-ENV PATH="/root/.local/bin:${PATH}"
-
-# Install pipx (needed for claude-mpm)
-RUN pip install --break-system-packages pipx && pipx ensurepath
-ENV PATH="/root/.local/bin:${PATH}"
-
-# Install claude-mpm
-RUN curl -fsSL https://raw.githubusercontent.com/the-original-body/claude-mpm/main/scripts/tob-setup.sh | bash
-
-# Create app user for security
+# Create app user for security (before installing user-specific tools)
 RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup
 
@@ -85,8 +74,20 @@ RUN mkdir -p /repos && \
     chown -R appuser:appgroup /repos && \
     git config --global --add safe.directory '*'
 
+# Create directories for credential mounts (gh and claude)
+RUN mkdir -p /home/appuser/.config/gh /home/appuser/.claude && \
+    chown -R appuser:appgroup /home/appuser/.config /home/appuser/.claude
+
 # Switch to non-root user
 USER appuser
+
+# Install Claude Code CLI as appuser
+RUN curl -fsSL https://claude.ai/install.sh | bash
+ENV PATH="/home/appuser/.local/bin:${PATH}"
+
+# Note: claude-mpm installation commented out for now
+# RUN pip install --break-system-packages pipx && pipx ensurepath
+# RUN curl -fsSL https://raw.githubusercontent.com/the-original-body/claude-mpm/main/scripts/tob-setup.sh | bash
 
 # Set runtime environment
 ENV HOST=0.0.0.0
